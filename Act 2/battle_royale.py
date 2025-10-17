@@ -17,7 +17,11 @@ from animated_game import show_animated_game
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
-
+import os
+import sys
+import json
+import importlib.util
+from pathlib import Path
 # ============================================================================
 # EVOLVABLE AGENT CLASS
 # ============================================================================
@@ -57,31 +61,106 @@ class EvolvableAgent(Agent):
 # ============================================================================
 
 def load_student_agents(folder_path="student_agents"):
-    """Load all student agent JSON files"""
+    """
+    Load all student agents from Python files or JSON files.
+    Supports both .py files (custom agent classes) and .json files (legacy format).
+    
+    Args:
+        folder_path: Directory containing student agent files
+    
+    Returns:
+        List of Agent instances
+    """
     student_agents = []
     
     print("📂 Loading student agents from:", folder_path)
     print("="*70 + "\n")
     
-    for filename in sorted(os.listdir(folder_path)):
-        if filename.endswith('.json'):
-            try:
-                with open(os.path.join(folder_path, filename), 'r') as f:
-                    data = json.load(f)
-                    
-                    agent = EvolvableAgent(
-                        genes=data['genes'],
-                        name=data.get('agent_name', 'Unnamed Agent'),
-                        student_name=data.get('student_name', filename.replace('.json', ''))
-                    )
+    if not os.path.exists(folder_path):
+        print(f"❌ Folder '{folder_path}' not found!")
+        print(f"   Creating folder...")
+        os.makedirs(folder_path)
+        print(f"   Add student agent .py or .json files to this folder")
+        return []
+    
+    # Get all Python and JSON files
+    py_files = list(Path(folder_path).glob("*.py"))
+    json_files = list(Path(folder_path).glob("*.json"))
+    
+    print(f"Found {len(py_files)} Python files and {len(json_files)} JSON files\n")
+    
+    # Load Python files (custom agent classes)
+    for filepath in sorted(py_files):
+        try:
+            # Get module name from filename
+            module_name = filepath.stem
+            
+            # Load the module dynamically
+            spec = importlib.util.spec_from_file_location(module_name, filepath)
+            if spec is None or spec.loader is None:
+                print(f"❌ Could not load spec for {filepath.name}")
+                continue
+                
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+            
+            # Try to get the agent using get_agent() function (preferred)
+            if hasattr(module, 'get_agent'):
+                agent = module.get_agent()
+                student_agents.append(agent)
+                print(f"✅ {agent.name:30s} from {filepath.name}")
+                continue
+            
+            # Fallback: Look for any Agent subclass in the module
+            from agents import Agent
+            found_agent = False
+            for item_name in dir(module):
+                item = getattr(module, item_name)
+                if (isinstance(item, type) and 
+                    issubclass(item, Agent) and 
+                    item is not Agent and
+                    item.__module__ == module_name):  # Only classes defined in this module
+                    agent = item()
                     student_agents.append(agent)
-                    
-                    print(f"✅ {agent.name:30s} by {agent.student_name}")
-            except Exception as e:
-                print(f"❌ Failed to load {filename}: {e}")
+                    print(f"✅ {agent.name:30s} from {filepath.name}")
+                    found_agent = True
+                    break
+            
+            if not found_agent:
+                print(f"⚠️  No agent class found in {filepath.name}")
+                
+        except Exception as e:
+            print(f"❌ Error loading {filepath.name}: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Load JSON files (legacy format - backwards compatibility)
+    for filepath in sorted(json_files):
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+                
+                # Create EvolvableAgent from JSON
+                agent = EvolvableAgent(
+                    genes=data['genes'],
+                    name=data.get('agent_name', data.get('name', 'Unnamed Agent')),
+                    student_name=data.get('student_name', filepath.stem)
+                )
+                student_agents.append(agent)
+                print(f"✅ {agent.name:30s} from {filepath.name} (JSON)")
+                
+        except Exception as e:
+            print(f"❌ Failed to load {filepath.name}: {e}")
     
     print(f"\n📊 Total agents loaded: {len(student_agents)}")
     print("="*70 + "\n")
+    
+    if len(student_agents) == 0:
+        print("⚠️  WARNING: No agents loaded!")
+        print("   Make sure your student_agents folder contains:")
+        print("   - .py files with agent classes (recommended)")
+        print("   - .json files with agent data (legacy)")
     
     return student_agents
 
