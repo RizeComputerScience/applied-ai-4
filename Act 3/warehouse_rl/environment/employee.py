@@ -17,6 +17,9 @@ class Employee:
         self.position = start_position
         self.salary_per_timestep = salary_per_timestep
         
+        # Productivity based on salary
+        self.base_speed_multiplier = self._calculate_speed_from_salary(salary_per_timestep)
+        
         # State management
         self.state = EmployeeState.IDLE
         self.current_order_id = None
@@ -52,6 +55,18 @@ class Employee:
         self.global_traffic_zones = set()  # Shared traffic zones across all agents
         self.alternative_targets = []  # List of alternative targets when main target is blocked
         
+        # Movement tracking for productivity
+        self.steps_since_last_action = 0
+    
+    def _calculate_speed_from_salary(self, salary: float) -> float:
+        """Calculate movement speed multiplier based on salary"""
+        # Base salary of 0.30 gives normal speed (1.0)
+        # Higher salary increases speed, lower salary decreases speed
+        # Range: 0.6x speed at $0.15/step to 1.5x speed at $0.90/step
+        base_salary = 0.30
+        speed_multiplier = 0.5 + (salary / base_salary) * 0.5
+        return max(0.6, min(1.5, speed_multiplier))
+        
     def set_order(self, order_id: int, order_items: List[int]):
         if self.state == EmployeeState.IDLE:
             self.current_order_id = order_id
@@ -86,6 +101,15 @@ class Employee:
         if not self.target_position or len(self.path) == 0:
             return False
         
+        # Apply speed multiplier - higher paid workers move faster
+        self.steps_since_last_action += 1
+        move_threshold = int(1.0 / self.base_speed_multiplier)
+        
+        if self.steps_since_last_action < move_threshold:
+            return False  # Not ready to move yet
+        
+        # Reset counter and make the move
+        self.steps_since_last_action = 0
         next_position = self.path[0]
         
         # Check if next position is walkable (no collision)
@@ -106,9 +130,12 @@ class Employee:
         return self.pick_item_from_position(warehouse_grid, item_type, self.position)
     
     def pick_item_from_position(self, warehouse_grid, item_type: int, pick_position: Tuple[int, int]) -> bool:
-        # Start picking task (takes 1 timestep to complete)
+        # Apply speed multiplier to picking tasks too
+        pick_time = max(1, int(2.0 / self.base_speed_multiplier))  # Higher paid workers pick faster
+        
+        # Start picking task
         if self.task_timer == 0:
-            self.task_timer = 1  # Will count down to 0 next call
+            self.task_timer = pick_time
             return False
         
         # Continue picking task
@@ -129,9 +156,12 @@ class Employee:
         if not warehouse_grid.is_truck_bay_position(self.position):
             return {'items': [], 'order_id': None}
         
-        # Start delivery task (takes 1 timestep to complete)
+        # Apply speed multiplier to delivery tasks too
+        delivery_time = max(1, int(2.0 / self.base_speed_multiplier))  # Higher paid workers deliver faster
+        
+        # Start delivery task
         if self.task_timer == 0:
-            self.task_timer = 1  # Will count down to 0 next call
+            self.task_timer = delivery_time
             return {'items': [], 'order_id': None}
         
         # Continue delivery task

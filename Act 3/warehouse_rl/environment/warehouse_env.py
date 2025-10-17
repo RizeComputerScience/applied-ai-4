@@ -56,7 +56,7 @@ class WarehouseEnv(gym.Env):
         
         # Action space: Strategic and tactical decisions
         self.action_space = spaces.Dict({
-            'staffing_action': spaces.Discrete(4),  # 0: no change, 1: hire worker, 2: fire, 3: hire manager
+            'staffing_action': spaces.Discrete(6),  # 0: no change, 1: hire low wage, 2: fire, 3: hire manager, 4: hire medium wage, 5: hire high wage
             'layout_swap': spaces.MultiDiscrete([grid_height * grid_width, grid_height * grid_width]),  # Two positions to swap
             'order_assignments': spaces.MultiDiscrete([self.max_employees + 1] * 20)  # Assign orders to employees (0=no assignment, 1-max_employees=employee index)
         })
@@ -148,20 +148,22 @@ class WarehouseEnv(gym.Env):
     def _execute_action(self, action: Dict) -> float:
         reward = 0.0
         
-        # Handle staffing decisions
+        # Handle staffing decisions with wage options
         staffing_action = action['staffing_action']
-        if staffing_action == 1:  # Hire worker
-            # Allow unlimited hiring for certain agents (like greedy for testing)
-            unlimited_hiring = getattr(self, '_unlimited_hiring', False)
-            if unlimited_hiring or len(self.employees) < self.max_employees:
-                self._hire_employee(is_manager=False)
+        unlimited_hiring = getattr(self, '_unlimited_hiring', False)
+        can_hire = unlimited_hiring or len(self.employees) < self.max_employees
+        
+        if staffing_action == 1 and can_hire:  # Hire low wage worker
+            self._hire_employee(is_manager=False, custom_salary=0.20)  # Low productivity, low cost
         elif staffing_action == 2:  # Fire
             if len(self.employees) > 0:
                 self._fire_employee()
-        elif staffing_action == 3:  # Hire manager
-            unlimited_hiring = getattr(self, '_unlimited_hiring', False)
-            if unlimited_hiring or len(self.employees) < self.max_employees:
-                self._hire_employee(is_manager=True)
+        elif staffing_action == 3 and can_hire:  # Hire manager
+            self._hire_employee(is_manager=True, custom_salary=1.0)
+        elif staffing_action == 4 and can_hire:  # Hire medium wage worker
+            self._hire_employee(is_manager=False, custom_salary=0.50)  # Medium productivity, medium cost
+        elif staffing_action == 5 and can_hire:  # Hire high wage worker
+            self._hire_employee(is_manager=False, custom_salary=0.80)  # High productivity, high cost
         
         # Handle layout swaps
         pos1_idx, pos2_idx = action['layout_swap']
@@ -312,8 +314,8 @@ class WarehouseEnv(gym.Env):
             completion_rate = queue_stats['completion_rate']
             self.order_generator.update_customer_satisfaction(completion_rate, self.current_timestep)
         
-        # Calculate costs
-        timestep_cost = len(self.employees) * self.employee_salary
+        # Calculate costs - sum actual employee salaries
+        timestep_cost = sum(emp.salary_per_timestep for emp in self.employees)
         self.total_costs += timestep_cost
         timestep_reward -= timestep_cost
         
@@ -324,9 +326,12 @@ class WarehouseEnv(gym.Env):
         
         return timestep_reward
     
-    def _hire_employee(self, is_manager: bool = False):
+    def _hire_employee(self, is_manager: bool = False, custom_salary: float = None):
         spawn_position = self.warehouse_grid.spawn_zones[len(self.employees) % len(self.warehouse_grid.spawn_zones)]
-        salary = 1.0 if is_manager else self.employee_salary  # Managers cost $1 per timestep
+        if custom_salary is not None:
+            salary = custom_salary
+        else:
+            salary = 1.0 if is_manager else self.employee_salary  # Managers cost $1 per timestep
         employee = Employee(self.next_employee_id, spawn_position, salary, is_manager)
         self.employees.append(employee)
         self.next_employee_id += 1
@@ -450,7 +455,7 @@ class WarehouseEnv(gym.Env):
             ]
         
         # Financial state
-        burn_rate = len(self.employees) * self.employee_salary
+        burn_rate = sum(emp.salary_per_timestep for emp in self.employees)
         financial_obs = np.array([
             self.cumulative_profit,
             self.total_revenue,
