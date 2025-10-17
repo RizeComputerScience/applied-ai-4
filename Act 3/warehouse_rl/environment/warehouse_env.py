@@ -16,7 +16,7 @@ class WarehouseEnv(gym.Env):
                  num_item_types: int = 50,
                  max_employees: int = 20,  # Lower cap for better profit margins
                  initial_employees: int = 3,
-                 episode_length: int = 5000,
+                 episode_length: int = 7500,
                  order_arrival_rate: float = 0.5,
                  order_timeout: int = 200,
                  employee_salary: float = 0.30,  # Reduced cost to improve profitability

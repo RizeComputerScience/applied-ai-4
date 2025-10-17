@@ -43,11 +43,11 @@ class OrderGenerator:
         self.timesteps_per_hour = 100
         self.day_length = 24 * self.timesteps_per_hour  # 2400 timesteps = 1 day
         
-        # Order complexity distribution
+        # Order complexity distribution - enhanced to favor complex orders with higher rewards
         self.complexity_distribution = {
-            'simple': {'weight': 0.60, 'items': (1, 2), 'base_value': 20},
-            'medium': {'weight': 0.30, 'items': (3, 4), 'base_value': 60}, 
-            'complex': {'weight': 0.10, 'items': (5, 7), 'base_value': 120}
+            'simple': {'weight': 0.40, 'items': (1, 2), 'base_value': 25},     # Reduced weight, increased value
+            'medium': {'weight': 0.35, 'items': (3, 4), 'base_value': 90},     # Increased weight and value
+            'complex': {'weight': 0.25, 'items': (5, 7), 'base_value': 200}    # Much higher weight and value
         }
         
         # Priority distribution

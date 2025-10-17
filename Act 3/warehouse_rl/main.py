@@ -252,7 +252,7 @@ def main():
                       choices=["demo", "benchmark", "train"],
                       help="Run mode")
     parser.add_argument("--agent", type=str, default="greedy_std",
-                      choices=["greedy_std", "random_std", "fixed_std", "intelligent_hiring", "intelligent_queue", "distance_based", "aggressive_swap", "skeleton_rl", "rl"],
+                      choices=["greedy_std", "random_std", "fixed_std", "intelligent_hiring", "intelligent_queue", "distance_based", "aggressive_swap", "skeleton_optimization", "rl"],
                       help="Agent to use for demo")
     parser.add_argument("--episodes", type=int, default=1,
                       help="Number of episodes to run")
