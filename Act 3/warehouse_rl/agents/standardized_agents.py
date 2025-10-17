@@ -33,7 +33,7 @@ class StandardizedAgentParams:
                  hire_threshold_ratio: float = 3.0,  # queue/employees ratio to trigger hiring
                  fire_threshold_ratio: float = 2.0,  # queue/employees ratio to trigger firing
                  profit_threshold_for_hiring: float = 0.0,  # minimum profit required to hire
-                 max_employees_strategy: int = 20,  # max employees for this strategy
+                 max_employees_strategy: int = 100,  # max employees for this strategy
                  manager_hiring_enabled: bool = False,  # whether to hire managers
                  manager_hire_timing: str = "immediate",  # "immediate", "profit_based", "never"
                  
@@ -1024,7 +1024,7 @@ def create_intelligent_hiring_agent(env) -> StandardizedAgent:
         hire_threshold_ratio=3.5,
         fire_threshold_ratio=2.0,
         profit_threshold_for_hiring=50,  # Very low threshold to hire managers immediately
-        max_employees_strategy=15,
+        max_employees_strategy=100,
         queue_strategy="fifo",
         layout_strategy="moderate",
         layout_optimization_interval=30,  # More frequent optimization
@@ -1041,7 +1041,7 @@ def create_intelligent_queue_agent(env) -> StandardizedAgent:
         hiring_strategy="sustained_profit",
         hire_threshold_ratio=3.0,
         fire_threshold_ratio=2.0,
-        max_employees_strategy=15,
+        max_employees_strategy=100,
         profit_tracking_window=150,
         queue_strategy="smart",
         order_value_weight=0.3,  # 30% weight on order value
@@ -1062,7 +1062,7 @@ def create_distance_based_agent(env) -> StandardizedAgent:
         hire_threshold_ratio=3.5,
         fire_threshold_ratio=2.0,
         profit_threshold_for_hiring=100,  # Much lower threshold
-        max_employees_strategy=15,
+        max_employees_strategy=100,
         queue_strategy="distance_based",  # Pure distance optimization
         order_value_weight=0.0,          # No value consideration
         distance_weight=1.0,             # 100% distance optimization

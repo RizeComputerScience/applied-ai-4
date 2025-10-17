@@ -257,7 +257,7 @@ class WarehouseEnv(gym.Env):
                         relocation['status'] == 'started'):
                         relocation['status'] = 'completed'
                         relocation['completed_timestep'] = self.current_timestep
-                        print(f"✅ Relocation completed: Item {relocation['item_type']} moved from {relocation['from_pos']} to {relocation['to_pos']}")
+                        # Relocation completed silently
                         break
             
             # Handle completed deliveries

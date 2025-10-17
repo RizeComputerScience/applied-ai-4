@@ -473,9 +473,8 @@ class Employee:
                                 # Swap operation - pick up target item and place source item
                                 current_target_item = warehouse_grid.remove_item_at_position(target_pos[0], target_pos[1])
                                 # Place source item at target
-                                print(f"EMPLOYEE DEBUG: Placing item {self.carrying_item_type} at target {target_pos}")
+                                # Place item at target position (debug silenced)
                                 result = warehouse_grid.set_item_at_position(target_pos[0], target_pos[1], self.carrying_item_type)
-                                print(f"EMPLOYEE DEBUG: Placement result: {result}")
                                 self.is_carrying_item = False
                                 
                                 # Now carry target item back to source
@@ -517,9 +516,8 @@ class Employee:
                     if self.position == source_adjacent:
                         # Stay adjacent and place target item back at source
                         if self.is_carrying_item and self.carrying_item_type == target_item:
-                            print(f"EMPLOYEE DEBUG: Placing target item {self.carrying_item_type} back at source {source_pos}")
+                            # Place target item back at source (debug silenced)
                             result = warehouse_grid.set_item_at_position(source_pos[0], source_pos[1], self.carrying_item_type)
-                            print(f"EMPLOYEE DEBUG: Source placement result: {result}")
                             self.is_carrying_item = False
                             self.carrying_item_type = None
                             self.relocation_task = None

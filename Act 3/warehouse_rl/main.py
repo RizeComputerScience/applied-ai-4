@@ -3,7 +3,12 @@
 import argparse
 import sys
 import time
+import warnings
 from typing import Optional
+
+# Suppress numpy warnings about empty slices and division
+warnings.filterwarnings("ignore", message="Mean of empty slice")
+warnings.filterwarnings("ignore", message="invalid value encountered in scalar divide")
 
 from environment.warehouse_env import WarehouseEnv
 from agents.baselines import get_baseline_agents
@@ -171,7 +176,7 @@ def run_benchmark(episodes: int = 10):
     results = {}
     
     for agent_name, agent in baseline_agents.items():
-        print(f"\nTesting {agent_name}...")
+        print(f"\nTesting {agent_name}...", end='', flush=True)
         
         episode_rewards = []
         episode_profits = []
@@ -194,33 +199,49 @@ def run_benchmark(episodes: int = 10):
             episode_rewards.append(episode_reward)
             episode_profits.append(info.get('profit', 0))
             episode_completion_rates.append(info.get('completion_rate', 0))
+            
+            # Show percentage completion
+            percent_complete = int(((episode + 1) / episodes) * 100)
+            print(f'\rTesting {agent_name}... [{percent_complete}% complete]', end='', flush=True)
         
-        # Calculate statistics
+        # Calculate statistics with confidence intervals
         avg_reward = sum(episode_rewards) / len(episode_rewards)
         avg_profit = sum(episode_profits) / len(episode_profits)
         avg_completion_rate = sum(episode_completion_rates) / len(episode_completion_rates)
+        
+        # Calculate 95% confidence intervals
+        import numpy as np
+        profit_std = np.std(episode_profits)
+        profit_ci = 1.96 * profit_std / np.sqrt(len(episode_profits)) if len(episode_profits) > 1 else 0
+        
+        completion_std = np.std(episode_completion_rates)
+        completion_ci = 1.96 * completion_std / np.sqrt(len(episode_completion_rates)) if len(episode_completion_rates) > 1 else 0
         
         results[agent_name] = {
             'avg_reward': avg_reward,
             'avg_profit': avg_profit,
             'avg_completion_rate': avg_completion_rate,
+            'profit_ci': profit_ci,
+            'completion_ci': completion_ci,
             'rewards': episode_rewards,
             'profits': episode_profits
         }
         
+        print(f'\rTesting {agent_name}... Done!                    ')  # Extra spaces to clear percentage
         print(f"  Average Reward: {avg_reward:.2f}")
-        print(f"  Average Profit: ${avg_profit:.2f}")
-        print(f"  Average Completion Rate: {avg_completion_rate:.1%}")
+        print(f"  Average Profit: ${avg_profit:.2f} ± ${profit_ci:.2f}")
+        print(f"  Average Completion Rate: {avg_completion_rate:.1%} ± {completion_ci:.1%}")
     
     # Print ranking
     print(f"\n--- Benchmark Results (ranked by profit) ---")
     sorted_agents = sorted(results.items(), key=lambda x: x[1]['avg_profit'], reverse=True)
     
     for i, (name, stats) in enumerate(sorted_agents, 1):
+        profit_ci = stats.get('profit_ci', 0)
+        completion_ci = stats.get('completion_ci', 0)
         print(f"{i}. {name:15s} | "
-              f"Profit: ${stats['avg_profit']:8.2f} | "
-              f"Reward: {stats['avg_reward']:8.2f} | "
-              f"Completion: {stats['avg_completion_rate']:6.1%}")
+              f"Profit: ${stats['avg_profit']:8.2f} ± ${profit_ci:6.2f} | "
+              f"Completion: {stats['avg_completion_rate']:6.1%} ± {completion_ci:5.1%}")
     
     env.close()
     return results
@@ -231,7 +252,7 @@ def main():
                       choices=["demo", "benchmark", "train"],
                       help="Run mode")
     parser.add_argument("--agent", type=str, default="greedy_std",
-                      choices=["greedy_std", "random_std", "fixed_std", "intelligent_hiring", "intelligent_queue", "distance_based", "aggressive_swap", "rl"],
+                      choices=["greedy_std", "random_std", "fixed_std", "intelligent_hiring", "intelligent_queue", "distance_based", "aggressive_swap", "skeleton_rl", "rl"],
                       help="Agent to use for demo")
     parser.add_argument("--episodes", type=int, default=1,
                       help="Number of episodes to run")

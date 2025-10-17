@@ -45,7 +45,7 @@ class WarehouseGrid:
         # Store positions
         self.packing_station = truck_bay_positions[0] if truck_bay_positions else (truck_bay_x, mid_y)
         self.truck_bay_positions = truck_bay_positions
-        print(f"Created {len(truck_bay_positions)} packing stations")
+        # Created packing stations silently
         
         # Set spawn zones (corners)
         spawn_positions = [
@@ -197,7 +197,7 @@ class WarehouseGrid:
         
         self.storage_positions = storage_positions
         self.empty_storage_positions = empty_storage_positions
-        print(f"Created {len(storage_positions)} storage positions ({len(empty_storage_positions)} empty) in {len(block_positions)} blocks")
+        # Created storage positions silently
     
     def _ensure_connectivity(self):
         """Ensure all walkable spaces are connected using flood fill"""
@@ -301,7 +301,7 @@ class WarehouseGrid:
         
         # Place the item in the storage cell
         self.item_grid[y, x] = item_type
-        print(f"DEBUG: Successfully placed item {item_type} at position ({x}, {y})")
+        # Item placement successful (debug silenced)
         return True
     
     def pick_item_at_position(self, x: int, y: int) -> Optional[int]:
