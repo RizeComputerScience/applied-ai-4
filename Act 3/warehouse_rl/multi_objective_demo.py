@@ -187,48 +187,19 @@ def plot_pareto_frontier(results: Dict):
                    color='lightgray', alpha=0.4, capsize=3, capthick=1, 
                    elinewidth=1, zorder=1)
     
-    # Calculate Pareto frontier with strict algorithm
-    def is_dominated(point, other_points):
-        """Check if a point is strictly dominated by any other point"""
-        for other in other_points:
-            # Strictly dominated means other is better in both objectives
-            if (other['service'] > point['service'] and other['profit'] > point['profit']):
-                return True
-            # Or significantly better in one while equal/slightly better in other
-            if (other['service'] >= point['service'] and other['profit'] > point['profit'] and 
-                other['service'] - point['service'] >= 0.02):  # 2% service threshold
-                return True
-            if (other['profit'] >= point['profit'] and other['service'] > point['service'] and 
-                other['profit'] - point['profit'] >= 200):  # $200 profit threshold
-                return True
-        return False
-    
-    # Find true Pareto frontier points (should be 2-4 points max)
+    # Calculate and draw Pareto frontier
     pareto_points = []
-    for i, config in enumerate(configurations):
-        other_configs = configurations[:i] + configurations[i+1:]
-        if not is_dominated(config, other_configs):
-            pareto_points.append(config)
+    configurations_sorted = sorted(configurations, key=lambda x: x['service'])
     
-    # Additional filtering: only keep extreme points and key trade-offs
-    if len(pareto_points) > 4:
-        # Keep profit maximizer, service maximizer, and best balanced points
-        profit_max = max(pareto_points, key=lambda x: x['profit'])
-        service_max = max(pareto_points, key=lambda x: x['service'])
-        
-        # Find balanced point (best profit-service product)
-        balanced = max(pareto_points, key=lambda x: x['profit'] * x['service'])
-        
-        # Keep only these key points
-        key_points = [profit_max, service_max, balanced]
-        # Remove duplicates
-        seen = set()
-        pareto_points = []
-        for point in key_points:
-            point_id = (round(point['profit'], 0), round(point['service'], 3))
-            if point_id not in seen:
-                pareto_points.append(point)
-                seen.add(point_id)
+    for config in configurations_sorted:
+        is_pareto = True
+        for other in configurations:
+            if (other['service'] >= config['service'] and other['profit'] >= config['profit'] and
+                (other['service'] > config['service'] or other['profit'] > config['profit'])):
+                is_pareto = False
+                break
+        if is_pareto:
+            pareto_points.append(config)
     
     # Sort Pareto points by service quality for smooth curve
     pareto_points.sort(key=lambda x: x['service'])
