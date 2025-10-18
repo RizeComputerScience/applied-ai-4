@@ -13,6 +13,13 @@ import warnings
 from typing import Dict, List, Tuple
 import time
 
+# Optional scipy import for smooth curves
+try:
+    from scipy.interpolate import make_interp_spline
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
@@ -25,11 +32,12 @@ def run_multi_objective_experiment(episodes: int = 5, episode_length: int = 2000
     print("🎯 Multi-Objective Optimization Demo")
     print("=====================================")
     print(f"Running {episodes} episodes per configuration...")
+    print(f"Testing {len(create_multi_objective_agents(None))} different wage levels...")
     print("Objectives: Profit Maximization vs Service Quality")
-    print("💰 New Feature: Wage-based productivity tradeoffs")
-    print("   • Low wage ($0.20): Slow workers, low cost")
-    print("   • Medium wage ($0.50): Balanced speed/cost")  
-    print("   • High wage ($0.80): Fast workers, high cost")
+    print("💰 Wage-based productivity tradeoffs:")
+    print("   • Blue points: Low wages, slow workers, low cost")
+    print("   • Red points: High wages, fast workers, high cost")  
+    print("   • Pareto frontier shows optimal tradeoff curve")
     print()
     
     # Create environment with controlled parameters for clear tradeoffs
@@ -117,155 +125,274 @@ def run_multi_objective_experiment(episodes: int = 5, episode_length: int = 2000
     return results
 
 def plot_pareto_frontier(results: Dict):
-    """Create Pareto frontier visualization"""
+    """Create modern wage-strategy scatterplot visualization"""
     
     # Extract data for plotting
     configurations = []
     for agent_name, data in results.items():
+        # Extract wage level from agent name (format: "Wage_$0.15")
+        wage_level = 0.5  # default
+        if 'Wage_' in agent_name:
+            try:
+                # Remove the $ sign and convert to float
+                wage_str = agent_name.split('_')[-1].replace('$', '')
+                wage_level = float(wage_str)
+            except:
+                pass
+        
         configurations.append({
             'name': agent_name,
             'profit': data['avg_profit'],
             'service': data['avg_completion_rate'],
-            'profit_weight': data['profit_weight'],
-            'service_weight': data['service_weight'],
+            'wage_level': wage_level,
             'profit_std': data['profit_std'],
             'service_std': data['service_std']
         })
     
-    # Sort by profit weight for better visualization
-    configurations.sort(key=lambda x: x['profit_weight'], reverse=True)
+    # Sort by wage level for better visualization
+    configurations.sort(key=lambda x: x['wage_level'])
     
-    # Create the plot
-    plt.figure(figsize=(12, 8))
+    # Set modern style
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(14, 10))
     
-    # Extract coordinates
+    # Extract coordinates and wage levels
     profits = [c['profit'] for c in configurations]
     services = [c['service'] for c in configurations]
-    profit_weights = [c['profit_weight'] for c in configurations]
+    wage_levels = [c['wage_level'] for c in configurations]
     
-    # Create color map based on profit weight
-    colors = plt.cm.RdYlBu_r(profit_weights)
+    # Modern color scheme - using viridis-based gradient
+    min_wage, max_wage = min(wage_levels), max(wage_levels)
+    normalized_wages = [(w - min_wage) / (max_wage - min_wage) for w in wage_levels]
     
-    # Plot points with error bars
+    # Create modern scatter plot with gradient colors
+    scatter = ax.scatter(services, profits, 
+                        c=normalized_wages, 
+                        s=120, 
+                        alpha=0.85,
+                        cmap='plasma',  # Modern, perceptually uniform colormap
+                        edgecolors='white', 
+                        linewidth=2,
+                        zorder=3)
+    
+    # Add modern colorbar
+    cbar = plt.colorbar(scatter, ax=ax, shrink=0.8, aspect=20)
+    cbar.set_label('Wage Level ($/timestep)', fontsize=12, fontweight='600', labelpad=15)
+    cbar.ax.tick_params(labelsize=10)
+    
+    # Add subtle error bars
+    for config in configurations:
+        ax.errorbar(config['service'], config['profit'], 
+                   xerr=config['service_std'], yerr=config['profit_std'],
+                   color='lightgray', alpha=0.4, capsize=3, capthick=1, 
+                   elinewidth=1, zorder=1)
+    
+    # Calculate Pareto frontier with strict algorithm
+    def is_dominated(point, other_points):
+        """Check if a point is strictly dominated by any other point"""
+        for other in other_points:
+            # Strictly dominated means other is better in both objectives
+            if (other['service'] > point['service'] and other['profit'] > point['profit']):
+                return True
+            # Or significantly better in one while equal/slightly better in other
+            if (other['service'] >= point['service'] and other['profit'] > point['profit'] and 
+                other['service'] - point['service'] >= 0.02):  # 2% service threshold
+                return True
+            if (other['profit'] >= point['profit'] and other['service'] > point['service'] and 
+                other['profit'] - point['profit'] >= 200):  # $200 profit threshold
+                return True
+        return False
+    
+    # Find true Pareto frontier points (should be 2-4 points max)
+    pareto_points = []
     for i, config in enumerate(configurations):
-        plt.scatter(config['service'], config['profit'], 
-                   c=[colors[i]], s=150, alpha=0.8, edgecolors='black', linewidth=1)
+        other_configs = configurations[:i] + configurations[i+1:]
+        if not is_dominated(config, other_configs):
+            pareto_points.append(config)
+    
+    # Additional filtering: only keep extreme points and key trade-offs
+    if len(pareto_points) > 4:
+        # Keep profit maximizer, service maximizer, and best balanced points
+        profit_max = max(pareto_points, key=lambda x: x['profit'])
+        service_max = max(pareto_points, key=lambda x: x['service'])
         
-        # Add error bars
-        plt.errorbar(config['service'], config['profit'], 
-                    xerr=config['service_std'], yerr=config['profit_std'],
-                    color='gray', alpha=0.5, capsize=3)
+        # Find balanced point (best profit-service product)
+        balanced = max(pareto_points, key=lambda x: x['profit'] * x['service'])
         
-        # Label points
-        label = f"P:{config['profit_weight']:.1f}"
-        plt.annotate(label, (config['service'], config['profit']), 
-                    xytext=(5, 5), textcoords='offset points', fontsize=9,
-                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+        # Keep only these key points
+        key_points = [profit_max, service_max, balanced]
+        # Remove duplicates
+        seen = set()
+        pareto_points = []
+        for point in key_points:
+            point_id = (round(point['profit'], 0), round(point['service'], 3))
+            if point_id not in seen:
+                pareto_points.append(point)
+                seen.add(point_id)
     
-    # Draw Pareto frontier line
-    frontier_x = [c['service'] for c in configurations]
-    frontier_y = [c['profit'] for c in configurations]
-    plt.plot(frontier_x, frontier_y, 'k--', alpha=0.6, linewidth=2, label='Pareto Frontier')
+    # Sort Pareto points by service quality for smooth curve
+    pareto_points.sort(key=lambda x: x['service'])
     
-    # Highlight intersection/knee point
-    if len(configurations) >= 3:
-        knee_idx = len(configurations) // 2  # Middle configuration
-        knee_config = configurations[knee_idx]
-        plt.scatter(knee_config['service'], knee_config['profit'], 
-                   c='red', s=300, marker='*', edgecolors='black', linewidth=2,
-                   label='Balanced Solution', zorder=5)
+    # Draw Pareto frontier with smooth curve
+    if len(pareto_points) >= 2:
+        pareto_services = np.array([p['service'] for p in pareto_points])
+        pareto_profits = np.array([p['profit'] for p in pareto_points])
+        
+        # Create smooth curve using interpolation if scipy is available and we have enough points
+        if SCIPY_AVAILABLE and len(pareto_points) >= 3:
+            # Create smooth curve
+            x_smooth = np.linspace(pareto_services.min(), pareto_services.max(), 100)
+            spl = make_interp_spline(pareto_services, pareto_profits, k=min(3, len(pareto_points)-1))
+            y_smooth = spl(x_smooth)
+            ax.plot(x_smooth, y_smooth, color='#2E86AB', linewidth=4, alpha=0.9, 
+                   label='Pareto Frontier', zorder=4)
+        else:
+            ax.plot(pareto_services, pareto_profits, color='#2E86AB', linewidth=4, alpha=0.9,
+                   label='Pareto Frontier', zorder=4)
+        
+        # Highlight Pareto points with modern styling
+        ax.scatter(pareto_services, pareto_profits, 
+                  color='#F18F01', s=200, 
+                  edgecolors='white', linewidth=3, 
+                  alpha=0.95, zorder=5, marker='D',
+                  label='Pareto Optimal Points')
     
-    # Formatting
-    plt.xlabel('Service Quality (Completion Rate)', fontsize=12, fontweight='bold')
-    plt.ylabel('Profit ($)', fontsize=12, fontweight='bold')
-    plt.title('Multi-Objective Optimization: Profit vs Service Quality\nPareto Frontier', 
-              fontsize=14, fontweight='bold', pad=20)
     
-    # Add grid and legend
-    plt.grid(True, alpha=0.3)
-    plt.legend(loc='upper left', fontsize=10)
+    # Modern styling
+    ax.set_xlabel('Service Quality (Order Completion Rate)', fontsize=14, fontweight='600', labelpad=10)
+    ax.set_ylabel('Profit ($)', fontsize=14, fontweight='600', labelpad=10)
+    ax.set_title('Multi-Objective Optimization: Wage Strategy Impact\nProfit vs. Service Quality Analysis', 
+                fontsize=16, fontweight='700', pad=25, color='#2E3440')
     
-    # Add objective preference annotations
-    plt.text(0.02, 0.98, 'Service-Focused\n(High completion rate,\nLower profit)', 
-             transform=plt.gca().transAxes, fontsize=10, 
-             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7),
-             verticalalignment='top')
+    # Clean up grid
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+    ax.set_axisbelow(True)
     
-    plt.text(0.98, 0.02, 'Profit-Focused\n(Higher profit,\nLower service)', 
-             transform=plt.gca().transAxes, fontsize=10,
-             bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.7),
-             verticalalignment='bottom', horizontalalignment='right')
+    # Modern legend with improved styling - moved to top right
+    legend = ax.legend(loc='upper right', fontsize=11, frameon=True, 
+                      fancybox=True, shadow=True, framealpha=0.95)
+    legend.get_frame().set_facecolor('white')
+    legend.get_frame().set_edgecolor('#E5E7EB')
     
-    # Format axes
-    plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1%}'))
-    plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:.0f}'))
+    # Expand axis limits to give annotation boxes more room
+    ax_xlim = ax.get_xlim()
+    ax_ylim = ax.get_ylim()
+    x_range = ax_xlim[1] - ax_xlim[0]
+    y_range = ax_ylim[1] - ax_ylim[0]
     
-    plt.tight_layout()
+    # Expand by 15% on each side
+    ax.set_xlim(ax_xlim[0] - 0.15 * x_range, ax_xlim[1] + 0.15 * x_range)
+    ax.set_ylim(ax_ylim[0] - 0.15 * y_range, ax_ylim[1] + 0.15 * y_range)
     
-    # Save the plot
-    plt.savefig('multi_objective_pareto_frontier.png', dpi=300, bbox_inches='tight')
-    print(f"\n📊 Pareto frontier plot saved as 'multi_objective_pareto_frontier.png'")
+    # Add modern annotation boxes with more breathing room
+    ax.text(0.05, 0.95, 'Low Wage Strategy\n• Lower costs\n• Reduced productivity\n• Higher service variability', 
+            transform=ax.transAxes, fontsize=11, fontweight='500',
+            bbox=dict(boxstyle='round,pad=0.8', facecolor='#EEF2FF', 
+                     edgecolor='#6366F1', alpha=0.9, linewidth=1.5),
+            verticalalignment='top')
+    
+    ax.text(0.95, 0.05, 'High Wage Strategy\n• Higher costs\n• Increased productivity\n• Consistent service quality', 
+            transform=ax.transAxes, fontsize=11, fontweight='500',
+            bbox=dict(boxstyle='round,pad=0.8', facecolor='#FEF2F2', 
+                     edgecolor='#EF4444', alpha=0.9, linewidth=1.5),
+            verticalalignment='bottom', horizontalalignment='right')
+    
+    # Format axes with modern styling
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1%}'))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:.0f}'))
+    
+    # Improve tick styling
+    ax.tick_params(axis='both', which='major', labelsize=11, colors='#374151')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#E5E7EB')
+    ax.spines['bottom'].set_color('#E5E7EB')
+    
+    # Add subtle background
+    ax.set_facecolor('#FAFAFA')
+    
+    plt.tight_layout(pad=2.0)
+    
+    # Save with high quality
+    plt.savefig('wage_productivity_scatterplot.png', dpi=300, bbox_inches='tight', 
+                facecolor='white', edgecolor='none')
+    print(f"\n📊 Modern wage-productivity visualization saved as 'wage_productivity_scatterplot.png'")
     
     plt.show()
 
 def print_detailed_results(results: Dict):
-    """Print detailed analysis of results"""
+    """Print detailed analysis of wage strategy results"""
     
-    print("\n" + "="*60)
-    print("DETAILED MULTI-OBJECTIVE ANALYSIS")
-    print("="*60)
+    print("\n" + "="*70)
+    print("DETAILED WAGE-PRODUCTIVITY ANALYSIS")
+    print("="*70)
     
-    # Sort by profit weight
-    sorted_results = sorted(results.items(), 
-                           key=lambda x: x[1]['profit_weight'], reverse=True)
+    # Sort by wage level
+    wage_results = []
+    for agent_name, data in results.items():
+        wage_level = 0.5  # default
+        if 'Wage_' in agent_name:
+            try:
+                # Remove the $ sign and convert to float
+                wage_str = agent_name.split('_')[-1].replace('$', '')
+                wage_level = float(wage_str)
+            except:
+                pass
+        wage_results.append((agent_name, data, wage_level))
     
-    print(f"{'Configuration':<25} {'Profit':<12} {'Service':<12} {'Tradeoff':<15}")
+    sorted_results = sorted(wage_results, key=lambda x: x[2])
+    
+    print(f"{'Wage Level':<12} {'Profit':<12} {'Service':<12} {'Efficiency':<15}")
     print("-" * 70)
     
-    for agent_name, data in sorted_results:
-        profit_focus = "Profit" if data['profit_weight'] > 0.6 else "Service" if data['service_weight'] > 0.6 else "Balanced"
+    for agent_name, data, wage_level in sorted_results:
+        efficiency = data['avg_profit'] / (wage_level * 1000)  # Profit per wage dollar
         
-        print(f"{agent_name:<25} "
-              f"${data['avg_profit']:>8.1f} "
+        print(f"${wage_level:<11.2f} "
+              f"${data['avg_profit']:>8.0f} "
               f"{data['avg_completion_rate']:>10.1%} "
-              f"{profit_focus:>13}")
+              f"{efficiency:>13.1f}")
     
-    print("\n" + "="*60)
+    print("\n" + "="*70)
     print("KEY INSIGHTS:")
-    print("="*60)
+    print("="*70)
     
     # Find extreme points
-    max_profit_config = max(sorted_results, key=lambda x: x[1]['avg_profit'])
-    max_service_config = max(sorted_results, key=lambda x: x[1]['avg_completion_rate'])
+    max_profit_result = max(sorted_results, key=lambda x: x[1]['avg_profit'])
+    max_service_result = max(sorted_results, key=lambda x: x[1]['avg_completion_rate'])
+    max_efficiency_result = max(sorted_results, key=lambda x: x[1]['avg_profit'] / (x[2] * 1000))
     
-    print(f"🏆 Highest Profit: {max_profit_config[0]}")
-    print(f"   Profit: ${max_profit_config[1]['avg_profit']:.1f}, Service: {max_profit_config[1]['avg_completion_rate']:.1%}")
+    print(f"🏆 Highest Profit: ${max_profit_result[2]:.2f} wage")
+    print(f"   Profit: ${max_profit_result[1]['avg_profit']:.0f}, Service: {max_profit_result[1]['avg_completion_rate']:.1%}")
     
-    print(f"\n⭐ Best Service: {max_service_config[0]}")
-    print(f"   Profit: ${max_service_config[1]['avg_profit']:.1f}, Service: {max_service_config[1]['avg_completion_rate']:.1%}")
+    print(f"\n⭐ Best Service: ${max_service_result[2]:.2f} wage")
+    print(f"   Profit: ${max_service_result[1]['avg_profit']:.0f}, Service: {max_service_result[1]['avg_completion_rate']:.1%}")
     
-    # Calculate tradeoff ratios
-    profit_range = max_profit_config[1]['avg_profit'] - max_service_config[1]['avg_profit']
-    service_range = max_service_config[1]['avg_completion_rate'] - max_profit_config[1]['avg_completion_rate']
+    print(f"\n💡 Most Efficient: ${max_efficiency_result[2]:.2f} wage")
+    print(f"   Profit: ${max_efficiency_result[1]['avg_profit']:.0f}, Service: {max_efficiency_result[1]['avg_completion_rate']:.1%}")
+    efficiency_score = max_efficiency_result[1]['avg_profit'] / (max_efficiency_result[2] * 1000)
+    print(f"   Efficiency: {efficiency_score:.1f} profit per wage dollar")
     
-    if service_range > 0:
-        tradeoff_ratio = profit_range / (service_range * 100)  # Profit per percentage point of service
-        print(f"\n📈 Tradeoff Rate: ${tradeoff_ratio:.1f} profit per percentage point of service quality")
+    # Calculate wage-productivity relationship
+    wages = [x[2] for x in sorted_results]
+    profits = [x[1]['avg_profit'] for x in sorted_results]
+    services = [x[1]['avg_completion_rate'] for x in sorted_results]
     
-    # Find balanced solution
-    balanced_configs = [x for x in sorted_results if abs(x[1]['profit_weight'] - 0.5) < 0.1]
-    if balanced_configs:
-        balanced = balanced_configs[0]
-        print(f"\n⚖️  Balanced Solution: {balanced[0]}")
-        print(f"   Offers {balanced[1]['avg_completion_rate']:.1%} service at ${balanced[1]['avg_profit']:.1f} profit")
+    # Find sweet spot (best profit-to-wage ratio)
+    import numpy as np
+    if len(wages) > 3:
+        best_ratio_idx = np.argmax([p/(w*1000) for p, w in zip(profits, wages)])
+        sweet_spot = sorted_results[best_ratio_idx]
+        print(f"\n🎯 Sweet Spot: ${sweet_spot[2]:.2f} wage level")
+        print(f"   Optimal balance of productivity and cost")
 
 def main():
     """Run multi-objective optimization demo"""
     
     print("Starting Multi-Objective Warehouse Optimization Demo...")
     
-    # Run experiment
-    results = run_multi_objective_experiment(episodes=3, episode_length=1500)
+    # Run experiment with multiple runs for statistical reliability
+    results = run_multi_objective_experiment(episodes=5, episode_length=2000)
     
     # Display results
     print_detailed_results(results)
@@ -273,14 +400,14 @@ def main():
     # Create visualization
     plot_pareto_frontier(results)
     
-    print("\n✅ Multi-objective optimization demo completed!")
-    print("The graph shows the Pareto frontier - the set of optimal tradeoffs")
-    print("between profit maximization and service quality.")
+    print("\n✅ Wage-productivity optimization demo completed!")
+    print("The scatterplot shows how different wage levels affect performance.")
     print("\nKey takeaways:")
-    print("• Each point represents a different optimization strategy")
-    print("• No single solution dominates all others")
-    print("• The choice depends on business priorities and constraints")
-    print("• The red star shows a balanced compromise solution")
+    print("• Blue points (low wages): Cheaper workers but slower service")
+    print("• Red points (high wages): Expensive workers but faster service") 
+    print("• Gold star shows the optimal wage level for maximum profit")
+    print("• Color gradient reveals the wage-productivity relationship")
+    print("• There's often a 'sweet spot' where moderate wages maximize efficiency")
 
 if __name__ == "__main__":
     main()

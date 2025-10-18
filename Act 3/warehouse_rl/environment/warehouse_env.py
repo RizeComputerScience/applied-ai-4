@@ -153,17 +153,23 @@ class WarehouseEnv(gym.Env):
         unlimited_hiring = getattr(self, '_unlimited_hiring', False)
         can_hire = unlimited_hiring or len(self.employees) < self.max_employees
         
+        # Allow agents to set preferred wage level
+        preferred_wage = getattr(self, '_preferred_wage', None)
+        
         if staffing_action == 1 and can_hire:  # Hire low wage worker
-            self._hire_employee(is_manager=False, custom_salary=0.20)  # Low productivity, low cost
+            wage = preferred_wage if preferred_wage and preferred_wage <= 0.30 else 0.20
+            self._hire_employee(is_manager=False, custom_salary=wage)
         elif staffing_action == 2:  # Fire
             if len(self.employees) > 0:
                 self._fire_employee()
         elif staffing_action == 3 and can_hire:  # Hire manager
             self._hire_employee(is_manager=True, custom_salary=1.0)
         elif staffing_action == 4 and can_hire:  # Hire medium wage worker
-            self._hire_employee(is_manager=False, custom_salary=0.50)  # Medium productivity, medium cost
+            wage = preferred_wage if preferred_wage and 0.30 < preferred_wage <= 0.60 else 0.50
+            self._hire_employee(is_manager=False, custom_salary=wage)
         elif staffing_action == 5 and can_hire:  # Hire high wage worker
-            self._hire_employee(is_manager=False, custom_salary=0.80)  # High productivity, high cost
+            wage = preferred_wage if preferred_wage and preferred_wage > 0.60 else 0.80
+            self._hire_employee(is_manager=False, custom_salary=wage)
         
         # Handle layout swaps
         pos1_idx, pos2_idx = action['layout_swap']

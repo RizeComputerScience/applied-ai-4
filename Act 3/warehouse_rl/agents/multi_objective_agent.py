@@ -89,6 +89,10 @@ class MultiObjectiveAgent(BaselineAgent):
     def get_action(self, observation: Dict) -> Dict:
         """Generate action optimizing weighted objectives"""
         
+        # Set preferred wage for wage strategy agents
+        if hasattr(self, 'wage_level'):
+            self.env._preferred_wage = self.wage_level
+        
         # Extract current state
         financial = observation['financial']  # [profit, revenue, costs, burn_rate]
         queue_info = observation['order_queue']
@@ -243,20 +247,46 @@ class MultiObjectiveAgent(BaselineAgent):
             'service_std': np.std(self.timestep_service_rates[-500:]) if len(self.timestep_service_rates) > 10 else 0
         }
 
-def create_multi_objective_agents(env) -> Dict[str, MultiObjectiveAgent]:
-    """Create agents with different objective weightings"""
+class WageStrategyAgent(MultiObjectiveAgent):
+    """Agent that tests specific wage levels"""
     
-    configurations = [
-        (0.9, 0.1),   # Profit-focused
-        (0.7, 0.3),   # Profit-leaning
-        (0.5, 0.5),   # Balanced
-        (0.3, 0.7),   # Service-leaning  
-        (0.1, 0.9),   # Service-focused
-    ]
+    def __init__(self, env, wage_label: str, wage_level: float):
+        # Use balanced objectives to focus on wage effects
+        super().__init__(env, profit_weight=0.5, service_weight=0.5)
+        self.wage_level = wage_level
+        self.name = f"Wage_{wage_label}"
+        
+    def _get_multi_objective_staffing(self, current_profit: float, workload_ratio: float, 
+                                    num_employees: int, service_rate: float) -> int:
+        """Staffing decisions based on specific wage strategy"""
+        
+        # Always use the assigned wage level when hiring
+        if workload_ratio > 3.0 and num_employees < 10:
+            # Map wage level to action
+            if self.wage_level <= 0.25:
+                return 1  # Low wage
+            elif self.wage_level <= 0.45:
+                return 4  # Medium wage  
+            else:
+                return 5  # High wage
+        elif workload_ratio < 1.0 and num_employees > 3:
+            return 2  # Fire when over-staffed
+        elif workload_ratio > 6 and num_employees < 8:
+            return 3  # Hire manager in crisis
+        
+        return 0
+
+def create_multi_objective_agents(env) -> Dict[str, MultiObjectiveAgent]:
+    """Create agents with different wage strategies"""
     
     agents = {}
-    for profit_weight, service_weight in configurations:
-        agent = MultiObjectiveAgent(env, profit_weight, service_weight)
+    
+    # Test wage levels including severe diminishing returns beyond $2.00
+    wage_levels = [0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 
+                  1.00, 1.20, 1.40, 1.60, 1.80, 2.00, 2.50, 3.00, 3.50, 4.00]
+    
+    for wage in wage_levels:
+        agent = WageStrategyAgent(env, f"${wage:.2f}", wage)
         agents[agent.name] = agent
     
     return agents

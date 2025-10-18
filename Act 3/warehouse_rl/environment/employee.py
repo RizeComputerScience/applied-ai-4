@@ -59,13 +59,30 @@ class Employee:
         self.steps_since_last_action = 0
     
     def _calculate_speed_from_salary(self, salary: float) -> float:
-        """Calculate movement speed multiplier based on salary"""
-        # Base salary of 0.30 gives normal speed (1.0)
-        # Higher salary increases speed, lower salary decreases speed
-        # Range: 0.6x speed at $0.15/step to 1.5x speed at $0.90/step
-        base_salary = 0.30
-        speed_multiplier = 0.5 + (salary / base_salary) * 0.5
-        return max(0.6, min(1.5, speed_multiplier))
+        """Calculate movement speed with piecewise linear diminishing returns"""
+        
+        # Piecewise linear function with diminishing marginal returns:
+        # $0.15-1.00: slope = 1 (1:1 speed increase)
+        # $1.00-2.00: slope = 0.5 (diminishing returns)
+        # $2.00+: slope = 0.25 (severe diminishing returns)
+        
+        # Ensure $0.30 = 1x speed as baseline
+        if salary <= 0.30:
+            # Linear from 0.15 to 0.30: speed goes from ~0.5x to 1.0x
+            return 0.5 + (salary - 0.15) * (0.5 / 0.15)
+        elif salary <= 1.00:
+            # Linear 1:1 slope from $0.30 (1x speed) to $1.00 (1.7x speed)
+            return 1.0 + (salary - 0.30) * 1.0
+        elif salary <= 2.00:
+            # Diminishing returns: slope = 0.5
+            # At $1.00 we have 1.7x speed, at $2.00 we have 2.2x speed
+            base_speed_at_1 = 1.7
+            return base_speed_at_1 + (salary - 1.00) * 0.5
+        else:
+            # Severe diminishing returns: slope = 0.25
+            # At $2.00 we have 2.2x speed
+            base_speed_at_2 = 2.2
+            return base_speed_at_2 + (salary - 2.00) * 0.25
         
     def set_order(self, order_id: int, order_items: List[int]):
         if self.state == EmployeeState.IDLE:
@@ -101,29 +118,39 @@ class Employee:
         if not self.target_position or len(self.path) == 0:
             return False
         
-        # Apply speed multiplier - higher paid workers move faster
-        self.steps_since_last_action += 1
-        move_threshold = int(1.0 / self.base_speed_multiplier)
+        # Apply speed multiplier - higher paid workers move multiple times per timestep
+        moves_this_timestep = int(self.base_speed_multiplier)  # 5x speed = 5 moves per timestep
+        remaining_fractional = self.base_speed_multiplier - moves_this_timestep
         
-        if self.steps_since_last_action < move_threshold:
-            return False  # Not ready to move yet
+        # Handle fractional part (e.g., 0.5x speed moves every other timestep)
+        if remaining_fractional > 0:
+            self.steps_since_last_action += remaining_fractional
+            if self.steps_since_last_action >= 1.0:
+                moves_this_timestep += 1
+                self.steps_since_last_action -= 1.0
         
-        # Reset counter and make the move
-        self.steps_since_last_action = 0
-        next_position = self.path[0]
-        
-        # Check if next position is walkable (no collision)
-        if warehouse_grid.is_walkable(next_position[0], next_position[1]):
-            self.position = next_position
-            self.path.pop(0)
+        # Make all the moves for this timestep
+        for _ in range(moves_this_timestep):
+            if not self.target_position or len(self.path) == 0:
+                break
+                
+            next_position = self.path[0]
             
-            # Check if reached target
-            if self.position == self.target_position:
-                self.target_position = None
-                self.path = []
-                return True
+            # Check if next position is walkable (no collision)
+            if warehouse_grid.is_walkable(next_position[0], next_position[1]):
+                self.position = next_position
+                self.path.pop(0)
+                
+                # Check if reached target
+                if self.position == self.target_position:
+                    self.target_position = None
+                    self.path = []
+                    return True
+            else:
+                # Collision - stop moving for this timestep
+                break
         
-        return False
+        return len(self.path) == 0  # Return True if we completed the path
     
     def pick_item(self, warehouse_grid, item_type: int) -> bool:
         # Legacy method - pick from current position
