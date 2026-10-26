@@ -80,37 +80,37 @@ class SkeletonOptimizationAgent(BaselineAgent):
         
         return action
     
-    def _get_naive_staffing_action(self, financial_state, employee_info) -> int:
-        """
-        WEEK 2 STEP 1: Staffing decisions - students should improve this!
-        
-        Current problems:
-        - Ignores queue length and workload
-        - Random decisions regardless of profit
-        - No consideration of employee efficiency
-        """
-        
-        # TODO WEEK 2 STEP 1: Students should implement intelligent staffing logic
-        # Current approach: Make random decisions based on "vibes"
-        
-        current_profit = financial_state[0]
-        num_employees = np.sum(employee_info[:, 0] > 0)  # Count active employees
-        
-        # Terrible logic: Random decisions with slight bias
-        # BUT: Hire managers more frequently so layout optimization can work
-        has_manager = np.any(employee_info[:, 5] == 1)  # Check if we have a manager
-        
-        if np.random.random() < 0.3:  # 30% chance to hire
-            if num_employees < 20:  # Don't go completely overboard
-                return 1  # Hire worker
-        elif np.random.random() < 0.1:  # 10% chance to fire
-            if num_employees > 1:  # Don't fire everyone
-                return 2  # Fire worker
-        elif np.random.random() < 0.2:  # 20% chance to hire manager (increased from 5%)
-            if not has_manager or num_employees > 10:  # Hire manager if we don't have one, or if we have lots of workers
-                return 3  # Hire manager
-        
-        return 0  # No action
+    
+def _get_naive_staffing_action(self, financial_state, employee_info) -> int:
+    """Make staffing decisions based on demand and profitability."""
+
+    current_profit = financial_state[0]
+    num_employees = int(np.sum(employee_info[:, 0] > 0))
+    queue_length = len(self.env.order_queue.orders)
+
+    queue_pressure = queue_length / max(1, num_employees)
+    has_manager = np.any(employee_info[:, 5] == 1)
+
+    # Hire a manager when the business is profitable.
+    if current_profit > 2000 and not has_manager:
+        return 3
+
+    # Hire a worker when demand and profitability justify the cost.
+    if queue_pressure > 3.0 and current_profit > 1000:
+        return 1
+
+    # Fire a worker only when staffing exceeds demand
+    # and the business is losing money or severely overstaffed.
+    if (
+        queue_pressure < 1.5
+        and num_employees > 2
+        and (current_profit < 0 or queue_pressure < 0.5)
+    ):
+        return 2
+
+    # Otherwise, keep staffing unchanged.
+    return 0
+
     
     def _get_naive_layout_action(self, current_timestep) -> list:
         """
